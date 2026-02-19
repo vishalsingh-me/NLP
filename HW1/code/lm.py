@@ -65,20 +65,38 @@ class NGramLM:
         # in `self.context_counts`, and store the count of
         # all trigrams in `self.ngram_counts`.
         # STUDENT START --------------------------
-        pass
+        self.vocab.update(tokens)
+        for ngram in self.get_ngrams(tokens, self.n):
+            self.ngram_counts[ngram] += 1
+            context = ngram[:-1]
+            self.context_counts[context] += 1
         # STUDENT END -----------------------------
             
     def get_prob(self, context, token):
         # TODO: Calculate P(token | context) with Laplace smoothing.
         # Remember to use `self.k`!
         # STUDENT START ------------------------------------
-        pass
+        vocab_size = len(self.vocab)
+        numerator = self.ngram_counts[context + (token,)] + self.k
+        denominator = self.context_counts[context] + self.k * vocab_size
+        return numerator / denominator
         # STUDENT END ---------------------------------------
 
     def perplexity(self, test_tokens):
         # TODO: compute perplexity on the test set.
         # STUDENT START --------------------------------
-        pass
+        ngrams = self.get_ngrams(test_tokens, self.n)
+        if not ngrams:
+            return float("inf")
+
+        log_prob_sum = 0.0
+        for ngram in ngrams:
+            context = ngram[:-1]
+            token = ngram[-1]
+            prob = self.get_prob(context, token)
+            log_prob_sum += math.log(prob)
+
+        return math.exp(-log_prob_sum / len(ngrams))
         # STUDENT END -----------------------------------
 
 class RNNLM(nn.Module):
@@ -117,6 +135,7 @@ class RNNLM(nn.Module):
 
         # TODO: you will first embed x using self.embedding.
         # STUDENT START --------------------------------------
+        embeddings = self.embedding(x)
         # STUDENT END ----------------------------------------
         
         # TODO: now, you will loop over all indices in seq_len, and
@@ -124,12 +143,19 @@ class RNNLM(nn.Module):
         # the self.rnn_cell over the embeddings for a particular position.
         # Append this hidden state to `outputs`.
         # STUDENT START --------------------------------
+        for t in range(seq_len):
+            hidden = self.rnn_cell(embeddings[:, t, :], hidden)
+            outputs.append(hidden.unsqueeze(1))
         # STUDENT END ----------------------------------
         
         # TODO: Concatenate the outputs into a tensor. Then,
         # use the output layer `self.fc` to compute the logits
         # over all possible tokens in the vocabulary.
         # STUDENT START -----------------------------------
+        outputs = torch.cat(outputs, dim=1)
+        logits = self.fc(outputs)
+        log_probs = torch.log_softmax(logits, dim=-1)
+        return log_probs, hidden
         # STUDENT END -------------------------------------
 
     def get_perplexity(self, data_loader, device='cpu'):
@@ -168,7 +194,17 @@ class LSTMLM(RNNLM):
         # TODO: implement the LSTM cell. This method takes as input the
         # h_{i-1}, c_{i-1}, and the input x. It returns h_i and c_i.
         # STUDENT START ------------------------------------------
-        pass
+        gates = x @ self.W_ih_lstm + self.b_ih_lstm + h_prev @ self.W_hh_lstm + self.b_hh_lstm
+        i_t, f_t, g_t, o_t = torch.chunk(gates, 4, dim=-1)
+
+        i_t = torch.sigmoid(i_t)
+        f_t = torch.sigmoid(f_t)
+        g_t = torch.tanh(g_t)
+        o_t = torch.sigmoid(o_t)
+
+        c_t = f_t * c_prev + i_t * g_t
+        h_t = o_t * torch.tanh(c_t)
+        return h_t, c_t
         # STUDENT END ---------------------------------------------
 
     def forward(self, x, states=None):
@@ -185,6 +221,17 @@ class LSTMLM(RNNLM):
         # and thus requires you to track the hidden state h_t and the
         # context vector c_t.
         # STUDENT START --------------------------------------
+        embeddings = self.embedding(x)
+        outputs = []
+
+        for t in range(seq_len):
+            h_t, c_t = self.lstm_cell(embeddings[:, t, :], h_t, c_t)
+            outputs.append(h_t.unsqueeze(1))
+
+        outputs = torch.cat(outputs, dim=1)
+        logits = self.fc(outputs)
+        log_probs = torch.log_softmax(logits, dim=-1)
+        return log_probs, (h_t, c_t)
         # STUDENT END ----------------------------------------
     
     # NOTE: you do not need to implement perplexity again. The logic is exactly the same

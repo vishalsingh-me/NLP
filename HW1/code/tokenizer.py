@@ -73,7 +73,12 @@ class BPETokenizer:
         # This method should return a dictionary with the following structure:
         # {[token1 (str), token2 (str)]: frequency (int)}
         # STUDENT START ------------------------------------
-        pass
+        pairs = collections.defaultdict(int)
+        for word, freq in vocab_counts.items():
+            symbols = word.split()
+            for i in range(len(symbols) - 1):
+                pairs[(symbols[i], symbols[i + 1])] += freq
+        return pairs
         # STUDENT END --------------------------------------
 
     def merge_vocab(self, pair, v_in):
@@ -89,10 +94,24 @@ class BPETokenizer:
         return v_out
 
     def train(self, text):
+        # Reset state in case train() is called multiple times.
+        self.vocab = {}
+        self.inverse_vocab = {}
+        self.merges = []
+        self.bpe_ranks = {}
+
         # TODO: 1. Pre-tokenize text into words and characters.
         # We add ▁ (Note: this is not an underscore! It's U+2581.) to
         # mark end of words to handle suffixes correctly.
         # STUDENT START ----------------------------
+        word_counts = collections.Counter(word_tokenize(text))
+        vocab_counts = {}
+        base_tokens = set()
+
+        for word, count in word_counts.items():
+            symbols = list(word) + ["▁"]
+            vocab_counts[" ".join(symbols)] = count
+            base_tokens.update(symbols)
         # STUDENT END ------------------------------
 
         # TODO: 2. Iteratively merge the most frequent token pairs.
@@ -105,6 +124,25 @@ class BPETokenizer:
         # Stop early if there are no pairs left, or if we reach the
         # target vocab size.
         # STUDENT START ---------------------------------------------
+        if self.vocab_size is None:
+            target_non_special_vocab = float("inf")
+        else:
+            target_non_special_vocab = max(self.vocab_size - len(self.special_tokens), 0)
+
+        learned_tokens = set(base_tokens)
+        while len(learned_tokens) < target_non_special_vocab:
+            pair_stats = self.get_stats(vocab_counts)
+            if not pair_stats:
+                break
+
+            best_pair = max(pair_stats, key=pair_stats.get)
+            merged_token = "".join(best_pair)
+
+            self.merges.append((best_pair, merged_token))
+            self.bpe_ranks[best_pair] = len(self.merges) - 1
+
+            vocab_counts = self.merge_vocab(best_pair, vocab_counts)
+            learned_tokens.add(merged_token)
         # STUDENT END -----------------------------------------------
 
         # TODO: 3. Update `self.vocab` and `self.inverse_vocab`.
@@ -117,6 +155,23 @@ class BPETokenizer:
         # HINT: if you stored all of the token pairs above, you could
         # repurpose that to build your vocabulary indices.
         # STUDENT START ---------------------------------------------
+        current_id = len(self.vocab)
+
+        for token in sorted(base_tokens):
+            if self.vocab_size is not None and current_id >= self.vocab_size:
+                break
+            if token not in self.vocab:
+                self.vocab[token] = current_id
+                self.inverse_vocab[current_id] = token
+                current_id += 1
+
+        for _, merged_token in self.merges:
+            if self.vocab_size is not None and current_id >= self.vocab_size:
+                break
+            if merged_token not in self.vocab:
+                self.vocab[merged_token] = current_id
+                self.inverse_vocab[current_id] = merged_token
+                current_id += 1
         # STUDENT END -------------------------------------------------
 
         print(f"Training complete. Vocab size: {len(self.vocab)}")
