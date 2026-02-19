@@ -9,7 +9,7 @@ import torch
 def main():
     parser = argparse.ArgumentParser(description='CS505 HW0: Text Classification')
     parser.add_argument('--model', type=str, default='TECH', 
-                        choices=['TECH', 'BOW', 'LR', 'BIGRAM'],
+                        choices=['TECH', 'BOW', 'LR', 'BIGRAM', 'BOWPLUS'],
                         help='Which model to run')
     parser.add_argument('--train_file', type=str, default='../data/train.txt', help='Path to training data')
     parser.add_argument('--dev_file', type=str, default='../data/dev.txt', help='Path to dev data')
@@ -35,9 +35,8 @@ def main():
         print(f"Train Accuracy: {train_acc:.4f}")
         print(f"Dev Accuracy: {dev_acc:.4f}")
         
-        # TODO: uncomment these lines after you've implemented macro-F1.
-        # dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
-        # print(f"Dev macro-F1: {dev_f1:.4f}")
+        dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
+        print(f"Dev macro-F1: {dev_f1:.4f}")
 
     elif args.model == 'BOW':
         start_time = time.time()
@@ -70,9 +69,8 @@ def main():
         print(f"Train Accuracy: {train_acc:.4f}")
         print(f"Dev Accuracy: {dev_acc:.4f}")
 
-        # TODO: uncomment these lines after you've implemented macro-F1.
-        # dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
-        # print(f"Dev macro-F1: {dev_f1:.4f}")
+        dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
+        print(f"Dev macro-F1: {dev_f1:.4f}")
 
         print(f"Time elapsed: {elapsed:.2f} seconds")
 
@@ -102,9 +100,8 @@ def main():
         print(f"Train Accuracy: {train_acc:.4f}")
         print(f"Dev Accuracy: {dev_acc:.4f}")
 
-        # TODO: uncomment these lines after you've implemented macro-F1.
-        # dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
-        # print(f"Dev macro-F1: {dev_f1:.4f}")
+        dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
+        print(f"Dev macro-F1: {dev_f1:.4f}")
 
         print(f"Time elapsed: {elapsed:.2f} seconds")
 
@@ -132,9 +129,36 @@ def main():
         print(f"Train Accuracy: {train_acc:.4f}")
         print(f"Dev Accuracy: {dev_acc:.4f}")
 
-        # TODO: uncomment these lines after you've implemented macro-F1.
-        # dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
-        # print(f"Dev macro-F1: {dev_f1:.4f}")
+        dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
+        print(f"Dev macro-F1: {dev_f1:.4f}")
+
+        print(f"Time elapsed: {elapsed:.2f} seconds")
+
+    elif args.model == 'BOWPLUS':
+        start_time = time.time()
+        featurizer = models.BoWPlusStatsFeaturizer(max_vocab_size=5000)
+        featurizer.build_vocab(train_data)
+        model = models.train_logistic_regression(train_data, dev_data, featurizer, method="lr",
+                                                 epochs=10, lr=0.1)
+
+        train_predictions = []
+        dev_predictions = []
+        for ex in train_data:
+            x = featurizer.get_feature_vector(ex.text)
+            train_predictions.append(model.predict(x))
+        for ex in dev_data:
+            x = featurizer.get_feature_vector(ex.text)
+            dev_predictions.append(model.predict(x))
+
+        train_acc = utils.calculate_accuracy(train_predictions, train_labels)
+        dev_acc = utils.calculate_accuracy(dev_predictions, dev_labels)
+        elapsed = time.time() - start_time
+
+        print(f"Train Accuracy: {train_acc:.4f}")
+        print(f"Dev Accuracy: {dev_acc:.4f}")
+
+        dev_f1 = utils.macro_f1(dev_predictions, dev_labels) 
+        print(f"Dev macro-F1: {dev_f1:.4f}")
 
         print(f"Time elapsed: {elapsed:.2f} seconds")
 

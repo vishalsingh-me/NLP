@@ -26,6 +26,10 @@ class BoWFeaturizer:
         # you can use the `word_tokenize` function that's been
         # imported above to tokenize the string.
         # STUDENT START ---------------------------------
+        for ex in data:
+            tokens = word_tokenize(ex.text.lower())
+            counts.update(tokens)
+        most_common = counts.most_common(self.max_vocab_size)
         # STUDENT END ------------------------------------
         
         # you might need to remove the `count` variable here, depending on how you
@@ -43,7 +47,47 @@ class BoWFeaturizer:
         # in `text`.
         # This shold return a torch tensor of size (vocab_size,).
         # STUDENT START -------------------------
+        vec = torch.zeros(self.vocab_size)
+        tokens = word_tokenize(text.lower())
+        for tok in tokens:
+            idx = self.vocab.get(tok)
+            if idx is not None:
+                vec[idx] += 1
+        return vec
         # STUDENT END ---------------------------
+
+
+class BoWPlusStatsFeaturizer(BoWFeaturizer):
+    """BoW featurizer with two extra scalar statistics per example."""
+
+    def __init__(self, max_vocab_size=10000):
+        super().__init__(max_vocab_size)
+        self.extra_dim = 2  # avg word length, type/token ratio
+        self.base_vocab_size = 0
+
+    def build_vocab(self, data):
+        # Build unigram vocab as usual
+        super().build_vocab(data)
+        self.base_vocab_size = len(self.vocab)
+        # Total feature size = bow dims + 2 stats
+        self.vocab_size = self.base_vocab_size + self.extra_dim
+
+    def get_feature_vector(self, text):
+        # Bag-of-words only over base vocab size
+        bow_vec = torch.zeros(self.base_vocab_size)
+        tokens = word_tokenize(text.lower())
+        for tok in tokens:
+            idx = self.vocab.get(tok)
+            if idx is not None:
+                bow_vec[idx] += 1
+
+        word_tokens = [t for t in tokens if any(ch.isalpha() for ch in t)]
+
+        avg_word_len = (sum(len(w) for w in word_tokens) / len(word_tokens)) if word_tokens else 0.0
+        type_token_ratio = (len(set(tokens)) / len(tokens)) if tokens else 0.0
+
+        stats_vec = torch.tensor([avg_word_len, type_token_ratio], dtype=bow_vec.dtype)
+        return torch.cat([bow_vec, stats_vec])
 
 
 class BigramFeaturizer(BoWFeaturizer):
@@ -53,10 +97,16 @@ class BigramFeaturizer(BoWFeaturizer):
             tokens = word_tokenize(ex.text.lower())
             # TODO: generate bigrams
             # STUDENT START ----------------------------
+            bigrams = [' '.join(bg) for bg in zip(tokens, tokens[1:])]
+            counts.update(bigrams)
             # STUDENT END ------------------------------
         
         # TODO: build your vocabulary of the `self.max_vocab_size` most frequent bigrams.
         # STUDENT START -------------------------------------------
+        most_common = counts.most_common(self.max_vocab_size)
+        self.vocab = {bg: idx for idx, (bg, cnt) in enumerate(most_common)}
+        self.inverse_vocab = {idx: bg for idx, (bg, cnt) in enumerate(most_common)}
+        self.vocab_size = len(self.vocab)
         # STUDENT END ---------------------------------------------
 
     def get_feature_vector(self, text):
@@ -66,6 +116,12 @@ class BigramFeaturizer(BoWFeaturizer):
         # TODO: use the list of tokens to generate bigram features.
         # Return the bigram feature vector.
         # STUDENT START --------------------------------------
+        for bg in zip(tokens, tokens[1:]):
+            key = ' '.join(bg)
+            idx = self.vocab.get(key)
+            if idx is not None:
+                vec[idx] += 1
+        return vec
         # STUDENT END -----------------------------------------
 
 
@@ -95,12 +151,16 @@ class LogisticRegressionClassifier:
         # TODO: implement the logistic regression as z = W^T * x + b. Return z.
         # Hint: this should only require one line of code!
         # STUDENT START ---------------------------------
+        return torch.matmul(x, self.weights) + self.bias
         # STUDENT END -----------------------------------
 
     def softmax(self, logits):
         # TODO: implement softmax. You may *not* use torch.nn.softmax or any
         # similar function. You may use torch.exp if you wish.
         # STUDENT START --------------------------------
+        shifted = logits - torch.max(logits)
+        exp_logits = torch.exp(shifted)
+        return exp_logits / torch.sum(exp_logits)
         # STUDENT END ----------------------------------
 
     def predict(self, x):
@@ -135,11 +195,17 @@ def train_logistic_regression(train_data, dev_data, featurizer, num_classes=4, l
             
             # TODO: 2. Compute the negative log likelihood loss.
             # STUDENT START ----------------------------
+            loss = -torch.log(probs[y_true] + 1e-12)
+            total_loss += loss.item()
             # STUDENT END ------------------------------
             
             # TODO: 3. Compute the gradient for the weights, and the gradient for
             # for the bias. You may not use .backward().
             # STUDENT START ----------------------------
+            grad_logits = probs.clone()
+            grad_logits[y_true] -= 1
+            grad_W = torch.ger(x, grad_logits)
+            grad_b = grad_logits
             # STUDENT END ------------------------------
             
             # TODO: 4. Update the parameters by multiplying the gradients you
@@ -147,6 +213,8 @@ def train_logistic_regression(train_data, dev_data, featurizer, num_classes=4, l
             # them from the weights and biases. You will need at least 1 line to update the
             # weight matrix, and at least 1 line to update the bias.
             # STUDENT START ----------------------------
+            model.weights -= lr * grad_W
+            model.bias -= lr * grad_b
             # STUDENT END ------------------------------
             
         print(f"Epoch {epoch+1}, Loss: {total_loss/len(train_data):.4f}")
@@ -194,6 +262,10 @@ def train_torch_model(train_data, dev_data, featurizer, num_classes=4, lr=0.01, 
     # just print out the top weights/tokens and put them in your written report.
     # STUDENT START ----------------------------------
     weights = model.linear.weight
+    for cls_idx in range(weights.size(0)):
+        top_vals, top_indices = torch.topk(weights[cls_idx], 5)
+        tokens = [featurizer.inverse_vocab[idx.item()] for idx in top_indices]
+        print(f"Class {cls_idx} top tokens:", tokens)
     # STUDENT END ------------------------------------
         
     return model
