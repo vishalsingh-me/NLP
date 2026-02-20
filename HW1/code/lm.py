@@ -2,6 +2,7 @@ import argparse
 import math
 import time
 import collections
+from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
@@ -240,6 +241,30 @@ class LSTMLM(RNNLM):
 
 
 if __name__ == "__main__":
+    def resolve_data_dir():
+        required_files = ("train.txt", "dev.txt", "test.txt")
+        script_dir = Path(__file__).resolve().parent
+
+        candidates = [
+            script_dir.parent / "data",
+            script_dir / "data",              
+            Path.cwd() / "data",             
+            Path.cwd().parent / "data",       
+            Path("/autograder/build/data"),   
+            Path("/autograder/source/data"),  
+            Path("/autograder/submission/data"),
+        ]
+
+        for candidate in candidates:
+            if all((candidate / name).exists() for name in required_files):
+                return candidate
+
+        checked_paths = "\n".join(str(p) for p in candidates)
+        raise FileNotFoundError(
+            "Could not locate data directory containing train.txt/dev.txt/test.txt.\n"
+            f"Checked:\n{checked_paths}"
+        )
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", type=str, required=True,
                         choices=["NGRAM", "RNN", "LSTM"])
@@ -249,11 +274,12 @@ if __name__ == "__main__":
 
     # Load train / dev / test data
     print("Loading data...")
-    with open("../data/train.txt", "r", encoding="utf-8") as f:
+    data_dir = resolve_data_dir()
+    with open(data_dir / "train.txt", "r", encoding="utf-8") as f:
         train_text = f.read()
-    with open("../data/dev.txt", "r", encoding="utf-8") as f:
+    with open(data_dir / "dev.txt", "r", encoding="utf-8") as f:
         dev_text = f.read()
-    with open("../data/test.txt", "r", encoding="utf-8") as f:
+    with open(data_dir / "test.txt", "r", encoding="utf-8") as f:
         test_text = f.read()
 
     # Tokenization (train ONLY)
